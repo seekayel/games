@@ -1,0 +1,61 @@
+body {
+  font-family: Arial, sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  margin: 0;
+  background-color: #f0f0f0;
+}
+
+.container {
+  text-align: center;
+}
+
+.controls {
+  margin-bottom: 20px;
+}
+
+input {
+  width: 50px;
+  margin: 0 10px;
+}
+
+#game-board {
+  display: grid;
+  grid-template-columns: repeat(var(--width), 20px);
+  grid-template-rows: repeat(var(--height), 20px);
+  gap: 1px;
+  background-color: #fff;
+  border: 1px solid #999;
+}
+
+.cell {
+  width: 20px;
+  height: 20px;
+  background-color: #ed0707;
+}
+
+.snake {
+  background-color: #080808;
+}
+
+.food {
+  background-color: #403d3c;
+}
+
+.adversary {
+  background-color: #a4169d;
+}
+
+#speed {
+  width: 200px;
+  margin: 0 10px;
+}
+
+#speed-value {
+  display: inline-block;
+  width: 30px;
+  text-align: left;
+}
+
