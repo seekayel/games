@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>NASA Missions</title>
+  <style>
+    /* Basic reset and styling */
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: black;
+      color: white;
+      font-family: sans-serif;
+    }
+    canvas {
+      display: block;
+      background: #000;
+    }
+  </style>
+</head>
+<body>
+  <!-- The game canvas -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Hidden SVG assets -->
+  <div id="assets" style="display: none;">
+    <!-- Spaceship SVG -->
+    <svg id="spaceshipSVG" xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50">
+      <polygon points="25,0 0,50 50,50" fill="white"/>
+    </svg>
+    <!-- Asteroid SVG -->
+    <svg id="asteroidSVG" xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
+      <circle cx="20" cy="20" r="20" fill="gray"/>
+    </svg>
+    <!-- Fast Shot Power-Up SVG -->
+    <svg id="powerupFastSVG" xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 30 30">
+      <polygon points="10,0 5,15 15,15 10,30 20,15 10,15" fill="yellow"/>
+    </svg>
+    <!-- Spread Shot Power-Up SVG -->
+    <svg id="powerupSpreadSVG" xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 30 30">
+      <rect x="13" y="0" width="4" height="30" fill="cyan"/>
+      <rect x="0" y="13" width="30" height="4" fill="cyan"/>
+    </svg>
+  </div>
+
+  <script>
+    /******************************
+     * SETUP & ASSET LOADING
+     ******************************/
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Adjust the canvas to fill the window.
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // Function to load an SVG asset (by element id) into an Image object.
+    function loadSVGImage(id) {
+      const svg = document.getElementById(id);
+      const svgData = new XMLSerializer().serializeToString(svg);
+      const base64 = window.btoa(svgData);
+      const img = new Image();
+      img.src = 'data:image/svg+xml;base64,' + base64;
+      return img;
+    }
+
+    // Load our graphics.
+    const spaceshipImg    = loadSVGImage("spaceshipSVG");
+    const asteroidImg     = loadSVGImage("asteroidSVG");
+    const powerupFastImg  = loadSVGImage("powerupFastSVG");
+    const powerupSpreadImg= loadSVGImage("powerupSpreadSVG");
+
+    /******************************
+     * GAME VARIABLES & OBJECTS
+     ******************************/
+    // The spaceship – starting near the left.
+    let spaceship = {
+      x: 50,
+      y: canvas.height / 2 - 25,
+      width: 50,
+      height: 50,
+      speed: 5
+    };
+
+    let bullets   = [];   // Each bullet: {x, y, dx, dy, width, height}
+    let asteroids = [];   // Each asteroid: {x, y, size, width, height, speed, dy (optional)}
+    let powerUps  = [];   // Each power-up: {x, y, type, width, height, speed}
+
+    // Key state storage
+    let keys = {};
+
+    // Shooting timing
+    let lastShotTime = 0;
+    const baseShotCooldown = 500; // milliseconds
+    let shotCooldown = baseShotCooldown;
+
+    // Power-up states and timers (each lasts 10 seconds)
+    let fastShotActive   = false;
+    let spreadShotActive = false;
+    let fastShotTimer    = 0;
+    let spreadShotTimer  = 0;
+    const powerUpDuration = 10000; // ms
+
+    // Score and timing
+    let score = 0;
+    let lastTime = performance.now();
+
+    // Spawn timers for asteroids and power-ups.
+    let asteroidSpawnTimer = 0;
+    const asteroidSpawnInterval = 1000; // every 1 second
+    let powerUpSpawnTimer = 0;
+    const powerUpSpawnInterval = 10000;  // every 10 seconds (with chance)
+
+    let gameOver = false;
+
+    /******************************
+     * INPUT HANDLING
+     ******************************/
+    document.addEventListener('keydown', function(e) {
+      keys[e.code] = true;
+      if (gameOver && e.code === 'KeyR') {
+        restartGame();
+      }
+    });
+    document.addEventListener('keyup', function(e) {
+      keys[e.code] = false;
+    });
+
+    /******************************
+     * MAIN GAME LOOP
+     ******************************/
+    function gameLoop() {
+      const now = performance.now();
+      const deltaTime = now - lastTime;
+      lastTime = now;
+
+      update(deltaTime);
+      draw();
+
+      if (!gameOver) {
+        requestAnimationFrame(gameLoop);
+      } else {
+        drawGameOver();
+      }
+    }
+
+    /******************************
+     * UPDATE GAME STATE
+     ******************************/
+    function update(deltaTime) {
+      // Increase score (points per second)
+      score += deltaTime / 1000;
+
+      // Update active power-up timers
+      if (fastShotActive) {
+        fastShotTimer -= deltaTime;
+        if (fastShotTimer <= 0) {
+          fastShotActive = false;
+          shotCooldown = baseShotCooldown;
+        }
+      }
+      if (spreadShotActive) {
+        spreadShotTimer -= deltaTime;
+        if (spreadShotTimer <= 0) {
+          spreadShotActive = false;
+        }
+      }
+
+      // --- Spaceship Movement ---
+      if (keys["ArrowUp"])    spaceship.y -= spaceship.speed;
+      if (keys["ArrowDown"])  spaceship.y += spaceship.speed;
+      if (keys["ArrowLeft"])  spaceship.x -= spaceship.speed;
+      if (keys["ArrowRight"]) spaceship.x += spaceship.speed;
+      // Keep the ship within the canvas
+      if (spaceship.x < 0) spaceship.x = 0;
+      if (spaceship.y < 0) spaceship.y = 0;
+      if (spaceship.x + spaceship.width > canvas.width)
+        spaceship.x = canvas.width - spaceship.width;
+      if (spaceship.y + spaceship.height > canvas.height)
+        spaceship.y = canvas.height - spaceship.height;
+
+      // --- Shooting ---
+      if (keys["Space"]) {
+        if (performance.now() - lastShotTime > shotCooldown) {
+          shootBullet();
+          lastShotTime = performance.now();
+        }
+      }
+
+      // --- Update Bullets ---
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        let b = bullets[i];
+        b.x += b.dx;
+        b.y += b.dy;
+        // Remove if off-screen
+        if (b.x > canvas.width || b.x < 0 ||
+            b.y > canvas.height || b.y < 0) {
+          bullets.splice(i, 1);
+        }
+      }
+
+      // --- Update Asteroids ---
+      for (let i = asteroids.length - 1; i >= 0; i--) {
+        let a = asteroids[i];
+        a.x -= a.speed;
+        // If a vertical (dy) component was given (from a split), update y.
+        if (a.dy !== undefined) {
+          a.y += a.dy;
+          if (a.y < 0) a.y = 0;
+          if (a.y + a.height > canvas.height)
+            a.y = canvas.height - a.height;
+        }
+        // Remove if off-screen
+        if (a.x + a.width < 0) {
+          asteroids.splice(i, 1);
+        }
+      }
+
+      // --- Update Power-Ups ---
+      for (let i = powerUps.length - 1; i >= 0; i--) {
+        let p = powerUps[i];
+        p.x -= p.speed;
+        if (p.x + p.width < 0) {
+          powerUps.splice(i, 1);
+        }
+      }
+
+      // --- Check Collisions ---
+
+      // Bullets vs. Asteroids
+      for (let i = asteroids.length - 1; i >= 0; i--) {
+        let a = asteroids[i];
+        for (let j = bullets.length - 1; j >= 0; j--) {
+          let b = bullets[j];
+          if (rectsIntersect(
+              {x: a.x, y: a.y, width: a.width, height: a.height},
+              {x: b.x, y: b.y, width: b.width, height: b.height}
+            )) {
+            // Remove the bullet
+            bullets.splice(j, 1);
+            // Award extra points for a hit
+            score += 5;
+            // If the asteroid is not the smallest, split it.
+            if (a.size > 1) {
+              splitAsteroid(a);
+            }
+            // Remove the hit asteroid.
+            asteroids.splice(i, 1);
+            break;
+          }
+        }
+      }
+
+      // Asteroids vs. Spaceship
+      for (let i = asteroids.length - 1; i >= 0; i--) {
+        let a = asteroids[i];
+        if (rectsIntersect(
+            {x: spaceship.x, y: spaceship.y, width: spaceship.width, height: spaceship.height},
+            {x: a.x, y: a.y, width: a.width, height: a.height}
+          )) {
+          gameOver = true;
+        }
+      }
+
+      // Power-Ups vs. Spaceship
+      for (let i = powerUps.length - 1; i >= 0; i--) {
+        let p = powerUps[i];
+        if (rectsIntersect(
+            {x: spaceship.x, y: spaceship.y, width: spaceship.width, height: spaceship.height},
+            {x: p.x, y: p.y, width: p.width, height: p.height}
+          )) {
+          if (p.type === "fast") {
+            fastShotActive = true;
+            fastShotTimer = powerUpDuration;
+            shotCooldown = 200; // Faster shooting!
+          } else if (p.type === "spread") {
+            spreadShotActive = true;
+            spreadShotTimer = powerUpDuration;
+          }
+          powerUps.splice(i, 1);
+        }
+      }
+
+      // --- Spawn New Asteroids ---
+      asteroidSpawnTimer += deltaTime;
+      if (asteroidSpawnTimer > asteroidSpawnInterval) {
+        spawnAsteroid();
+        asteroidSpawnTimer = 0;
+      }
+
+      // --- Spawn New Power-Ups ---
+      powerUpSpawnTimer += deltaTime;
+      if (powerUpSpawnTimer > powerUpSpawnInterval) {
+        spawnPowerUp();
+        powerUpSpawnTimer = 0;
+      }
+    }
+
+    /******************************
+     * DRAWING
+     ******************************/
+    function draw() {
+      // Clear the screen.
+      ctx.fillStyle = 'black';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw the spaceship.
+      ctx.drawImage(spaceshipImg, spaceship.x, spaceship.y, spaceship.width, spaceship.height);
+
+      // Draw bullets.
+      ctx.fillStyle = 'red';
+      for (let b of bullets) {
+        ctx.fillRect(b.x, b.y, b.width, b.height);
+      }
+
+      // Draw asteroids.
+      for (let a of asteroids) {
+        ctx.drawImage(asteroidImg, a.x, a.y, a.width, a.height);
+      }
+
+      // Draw power-ups.
+      for (let p of powerUps) {
+        if (p.type === "fast") {
+          ctx.drawImage(powerupFastImg, p.x, p.y, p.width, p.height);
+        } else if (p.type === "spread") {
+          ctx.drawImage(powerupSpreadImg, p.x, p.y, p.width, p.height);
+        }
+      }
+
+      // Draw score and active power-ups.
+      ctx.fillStyle = 'white';
+      ctx.font = '20px Arial';
+      ctx.textAlign = 'left';
+      ctx.fillText('Score: ' + Math.floor(score), 10, 30);
+      let activePwr = [];
+      if (fastShotActive) activePwr.push("Fast Shot");
+      if (spreadShotActive) activePwr.push("Spread Shot");
+      if (activePwr.length > 0) {
+        ctx.fillText('Power-Ups: ' + activePwr.join(" "), 10, 60);
+      }
+    }
+
+    // Draw a translucent overlay with game over text.
+    function drawGameOver() {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'white';
+      ctx.font = '50px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 20);
+      ctx.font = '30px Arial';
+      ctx.fillText('Press R to Restart', canvas.width / 2, canvas.height / 2 + 20);
+    }
+
+    /******************************
+     * HELPER FUNCTIONS
+     ******************************/
+    // Simple AABB (axis-aligned bounding box) collision detection.
+    function rectsIntersect(r1, r2) {
+      return !(r2.x > r1.x + r1.width ||
+               r2.x + r2.width < r1.x ||
+               r2.y > r1.y + r1.height ||
+               r2.y + r2.height < r1.y);
+    }
+
+    // When shooting, fire one bullet (or three if spread-shot is active).
+    function shootBullet() {
+      const bulletSpeed = 8;
+      const startX = spaceship.x + spaceship.width;
+      const startY = spaceship.y + spaceship.height / 2 - 2;
+      if (spreadShotActive) {
+        // Fire three bullets at slight vertical angles.
+        bullets.push({x: startX, y: startY, dx: bulletSpeed, dy: -2, width: 6, height: 4});
+        bullets.push({x: startX, y: startY, dx: bulletSpeed, dy: 0, width: 6, height: 4});
+        bullets.push({x: startX, y: startY, dx: bulletSpeed, dy: 2, width: 6, height: 4});
+      } else {
+        // Single straight bullet.
+        bullets.push({x: startX, y: startY, dx: bulletSpeed, dy: 0, width: 6, height: 4});
+      }
+    }
+
+    // Spawn an asteroid coming in from the right.
+    function spawnAsteroid() {
+      // Choose a random size: 1 (small), 2 (medium), or 3 (large).
+      const size = Math.floor(Math.random() * 3) + 1;
+      const dims = getAsteroidDimensions(size);
+      const x = canvas.width;
+      const y = Math.random() * (canvas.height - dims.height);
+      // Smaller asteroids move faster.
+      const speed = 2 + (3 - size) * 1.5;
+      asteroids.push({
+        x: x,
+        y: y,
+        size: size,
+        width: dims.width,
+        height: dims.height,
+        speed: speed
+      });
+    }
+
+    // Return width and height based on asteroid size.
+    function getAsteroidDimensions(size) {
+      if (size === 3) return {width: 60, height: 60};
+      if (size === 2) return {width: 40, height: 40};
+      return {width: 20, height: 20};
+    }
+
+    // When an asteroid is hit and is larger than the smallest,
+    // split it into two asteroids of one size smaller.
+    function splitAsteroid(asteroid) {
+      const newSize = asteroid.size - 1;
+      const dims = getAsteroidDimensions(newSize);
+      // Create two new asteroids from the current one.
+      for (let i = 0; i < 2; i++) {
+        asteroids.push({
+          x: asteroid.x,
+          y: asteroid.y,
+          size: newSize,
+          width: dims.width,
+          height: dims.height,
+          // Slight variation in speed and add a little vertical movement.
+          speed: asteroid.speed + Math.random() * 0.5,
+          dy: (Math.random() - 0.5) * 2
+        });
+      }
+    }
+
+    // Spawn a power-up from the right.
+    function spawnPowerUp() {
+      // Randomly choose between a "fast" and "spread" power-up.
+      const type = Math.random() < 0.5 ? "fast" : "spread";
+      const size = 30;
+      const x = canvas.width;
+      const y = Math.random() * (canvas.height - size);
+      const speed = 2;
+      powerUps.push({
+        x: x,
+        y: y,
+        type: type,
+        width: size,
+        height: size,
+        speed: speed
+      });
+    }
+
+    // Restart the game after a game over.
+    function restartGame() {
+      spaceship.x = 50;
+      spaceship.y = canvas.height / 2 - 25;
+      bullets   = [];
+      asteroids = [];
+      powerUps  = [];
+      score = 0;
+      fastShotActive = false;
+      spreadShotActive = false;
+      fastShotTimer = 0;
+      spreadShotTimer = 0;
+      lastShotTime = 0;
+      asteroidSpawnTimer = 0;
+      powerUpSpawnTimer = 0;
+      gameOver = false;
+      lastTime = performance.now();
+      requestAnimationFrame(gameLoop);
+    }
+
+    /******************************
+     * START THE GAME
+     ******************************/
+    // Wait for the spaceship image to load before starting.
+    spaceshipImg.onload = function() {
+      requestAnimationFrame(gameLoop);
+    };
+  </script>
+</body>
+</html>
