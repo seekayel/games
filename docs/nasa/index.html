@@ -25,9 +25,21 @@
 
   <!-- Hidden SVG assets -->
   <div id="assets" style="display: none;">
-    <!-- Spaceship SVG -->
-    <svg id="spaceshipSVG" xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50">
-      <polygon points="25,0 0,50 50,50" fill="white"/>
+    <!-- Improved Spaceship SVG -->
+    <svg id="spaceshipSVG" xmlns="http://www.w3.org/2000/svg" width="50" height="60" viewBox="0 0 50 60">
+      <defs>
+        <linearGradient id="rocketGradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ccc"/>
+          <stop offset="100%" stop-color="#666"/>
+        </linearGradient>
+      </defs>
+      <!-- Rocket body -->
+      <path d="M25 0 L35 15 L35 40 L25 55 L15 40 L15 15 Z" fill="url(#rocketGradient)" stroke="white" stroke-width="1"/>
+      <!-- Engine flame -->
+      <rect x="23" y="55" width="4" height="5" fill="orange"/>
+      <polygon points="23,60 25,68 27,60" fill="red"/>
+      <!-- Cockpit -->
+      <ellipse cx="25" cy="20" rx="4" ry="3" fill="skyblue"/>
     </svg>
     <!-- Asteroid SVG -->
     <svg id="asteroidSVG" xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
@@ -81,9 +93,9 @@
     // The spaceship – starting near the left.
     let spaceship = {
       x: 50,
-      y: canvas.height / 2 - 25,
+      y: canvas.height / 2 - 30,
       width: 50,
-      height: 50,
+      height: 60,
       speed: 5
     };
 
@@ -96,15 +108,14 @@
 
     // Shooting timing
     let lastShotTime = 0;
-    const baseShotCooldown = 500; // milliseconds
-    let shotCooldown = baseShotCooldown;
+    const baseShotCooldown = 250; // milliseconds (50% shorter than original)
 
-    // Power-up states and timers (each lasts 10 seconds)
-    let fastShotActive   = false;
-    let spreadShotActive = false;
-    let fastShotTimer    = 0;
-    let spreadShotTimer  = 0;
+    // Power-up duration
     const powerUpDuration = 10000; // ms
+
+    // Instead of booleans, we use arrays to allow stacking effects.
+    let fastShotTimers   = [];  // each element is remaining ms for a fast shot effect
+    let spreadShotTimers = [];  // each element is remaining ms for a spread shot effect
 
     // Score and timing
     let score = 0;
@@ -156,20 +167,15 @@
       // Increase score (points per second)
       score += deltaTime / 1000;
 
-      // Update active power-up timers
-      if (fastShotActive) {
-        fastShotTimer -= deltaTime;
-        if (fastShotTimer <= 0) {
-          fastShotActive = false;
-          shotCooldown = baseShotCooldown;
-        }
-      }
-      if (spreadShotActive) {
-        spreadShotTimer -= deltaTime;
-        if (spreadShotTimer <= 0) {
-          spreadShotActive = false;
-        }
-      }
+      // Update active power-up timers and remove expired ones.
+      fastShotTimers = fastShotTimers.map(timer => timer - deltaTime).filter(timer => timer > 0);
+      spreadShotTimers = spreadShotTimers.map(timer => timer - deltaTime).filter(timer => timer > 0);
+      // Determine power-up levels based on the number of active timers.
+      let fastShotLevel = fastShotTimers.length;
+      let spreadShotLevel = spreadShotTimers.length;
+
+      // Calculate effective shot cooldown (each fast shot reduces cooldown by 50 ms, minimum 50ms)
+      let effectiveShotCooldown = Math.max(50, baseShotCooldown - fastShotLevel * 50);
 
       // --- Spaceship Movement ---
       if (keys["ArrowUp"])    spaceship.y -= spaceship.speed;
@@ -186,8 +192,8 @@
 
       // --- Shooting ---
       if (keys["Space"]) {
-        if (performance.now() - lastShotTime > shotCooldown) {
-          shootBullet();
+        if (performance.now() - lastShotTime > effectiveShotCooldown) {
+          shootBullet(spreadShotLevel);
           lastShotTime = performance.now();
         }
       }
@@ -275,12 +281,9 @@
             {x: p.x, y: p.y, width: p.width, height: p.height}
           )) {
           if (p.type === "fast") {
-            fastShotActive = true;
-            fastShotTimer = powerUpDuration;
-            shotCooldown = 200; // Faster shooting!
+            fastShotTimers.push(powerUpDuration);
           } else if (p.type === "spread") {
-            spreadShotActive = true;
-            spreadShotTimer = powerUpDuration;
+            spreadShotTimers.push(powerUpDuration);
           }
           powerUps.splice(i, 1);
         }
@@ -338,8 +341,8 @@
       ctx.textAlign = 'left';
       ctx.fillText('Score: ' + Math.floor(score), 10, 30);
       let activePwr = [];
-      if (fastShotActive) activePwr.push("Fast Shot");
-      if (spreadShotActive) activePwr.push("Spread Shot");
+      if (fastShotTimers.length > 0) activePwr.push("Fast Shot x" + fastShotTimers.length);
+      if (spreadShotTimers.length > 0) activePwr.push("Spread Shot x" + spreadShotTimers.length);
       if (activePwr.length > 0) {
         ctx.fillText('Power-Ups: ' + activePwr.join(" "), 10, 60);
       }
@@ -368,19 +371,23 @@
                r2.y + r2.height < r1.y);
     }
 
-    // When shooting, fire one bullet (or three if spread-shot is active).
-    function shootBullet() {
+    // When shooting, fire bullets. If spreadShot level is active, fire multiple bullets.
+    function shootBullet(spreadLevel) {
       const bulletSpeed = 8;
+      // Bullets are now 8x larger than originally.
+      const bulletWidth = 6 * 8;   // 48
+      const bulletHeight = 4 * 8;  // 32
       const startX = spaceship.x + spaceship.width;
-      const startY = spaceship.y + spaceship.height / 2 - 2;
-      if (spreadShotActive) {
-        // Fire three bullets at slight vertical angles.
-        bullets.push({x: startX, y: startY, dx: bulletSpeed, dy: -2, width: 6, height: 4});
-        bullets.push({x: startX, y: startY, dx: bulletSpeed, dy: 0, width: 6, height: 4});
-        bullets.push({x: startX, y: startY, dx: bulletSpeed, dy: 2, width: 6, height: 4});
-      } else {
-        // Single straight bullet.
-        bullets.push({x: startX, y: startY, dx: bulletSpeed, dy: 0, width: 6, height: 4});
+      const startY = spaceship.y + spaceship.height / 2 - bulletHeight / 2;
+      
+      // Determine number of bullets: base 1 bullet, plus 2 extra for each spread level.
+      let numBullets = 1 + spreadLevel * 2;
+      let center = Math.floor(numBullets / 2);
+      // Spread factor determines the vertical offset.
+      const spreadFactor = 4;
+      for (let i = 0; i < numBullets; i++) {
+        let dy = (i - center) * spreadFactor;
+        bullets.push({x: startX, y: startY, dx: bulletSpeed, dy: dy, width: bulletWidth, height: bulletHeight});
       }
     }
 
@@ -451,15 +458,13 @@
     // Restart the game after a game over.
     function restartGame() {
       spaceship.x = 50;
-      spaceship.y = canvas.height / 2 - 25;
+      spaceship.y = canvas.height / 2 - spaceship.height / 2;
       bullets   = [];
       asteroids = [];
       powerUps  = [];
       score = 0;
-      fastShotActive = false;
-      spreadShotActive = false;
-      fastShotTimer = 0;
-      spreadShotTimer = 0;
+      fastShotTimers = [];
+      spreadShotTimers = [];
       lastShotTime = 0;
       asteroidSpawnTimer = 0;
       powerUpSpawnTimer = 0;
