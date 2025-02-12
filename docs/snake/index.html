@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Folder Navigation</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Snake Game</title>
+    <link rel="stylesheet" href="styles.css">
 
     <script>
         !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey getNextSurveyStep identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug getPageViewId".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
@@ -14,38 +14,23 @@
         })
     </script>
 </head>
-<body class="bg-gray-100 p-4">
-
-    <div class="container mx-auto">
-        <h1 class="text-3xl font-bold mb-4">Select a Folder</h1>
-        <div id="button-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            </div>
+<body>
+    <div class="container">
+        <h1>Snake Game</h1>
+        <div class="controls">
+            <label for="width">Width:</label>
+            <input type="number" id="width" min="10" max="50" value="20">
+            <label for="height">Height:</label>
+            <input type="number" id="height" min="10" max="50" value="20">
+            <label for="speed">Speed:</label>
+            <input type="range" id="speed" min="25" max="200" value="100">
+            <span id="speed-value">1x</span>
+            <button id="start">Start Game</button>
+        </div>
+        <div id="game-board"></div>
+        <div id="score">Score: 0</div>
     </div>
-
-    <script>
-        const buttonContainer = document.getElementById('button-container');
-
-        // Replace with your actual folder paths (or dynamically generate them)
-        const folders = [
-            "space-invaders",
-            "snake",
-            "nasa"
-        ];
-
-        folders.forEach(folder => {
-            const buttonText = folder; // Replace dashes with spaces
-            const button = document.createElement('button');
-            button.textContent = buttonText;
-            button.classList.add('bg-blue-500', 'hover:bg-blue-700', 'text-white', 'font-bold', 'py-2', 'px-4', 'rounded');
-            button.addEventListener('click', () => {
-                // Handle button click (e.g., redirect to the folder)
-                console.log(`Navigating to: ${folder}`);
-                // Example redirect:
-                window.location.href = `/${folder}`; // Adjust path as needed.
-            });
-            buttonContainer.appendChild(button);
-        });
-    </script>
-
+    <script src="script.js"></script>
 </body>
 </html>
+
